@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Semantic.Roleplaying.Engine\Semantic.Roleplaying.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Data\sleepover_scenario.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
