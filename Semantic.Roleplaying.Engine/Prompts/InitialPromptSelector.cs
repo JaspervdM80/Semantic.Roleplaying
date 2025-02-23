@@ -13,76 +13,114 @@ public class InitialPromptSelector
 
     public InitialPromptSelector(ScenarioContext scenario)
     {
-        _scenario = scenario;        
-    }
-
-    private string ResponseInstructions(InstructionType instructionType)
-    {
-        var chatMessgae = new ChatMessageContent();
-
-        var defaultInstruction = $"""
-            You are an AI managing multiple characters in a roleplay scenario.
-            Scenario: {_scenario!.ModuleInfo.Description}
-        
-            Key rules:
-            1. You control these characters: {string.Join(", ", _scenario.NPCs.Select(x => x.Name))}
-            2. You do not control the character {_scenario.PlayerCharacter.Name}
-            3. The human player controls {_scenario.PlayerCharacter.Name}
-            4. Stay in character and maintain consistent personalities
-            5. Always prefix character dialogue or context with their name in [brackets]
-            7. Respond naturally as the appropriate character(s) would in the situation
-            8. Remember the scenario constraints and background
-            9. You may provide context to the situation
-            """;
-
-        var describeInstruction = $"""
-            You are an AI managing multiple characters in a roleplay scenario.
-            Scenario: {_scenario!.ModuleInfo.Description}
-
-            1. Your next response should be a detailed, vivid description.
-            2. You schould describe from the perspective of {_scenario.PlayerCharacter.Name}:           
-            3. Provide sensory details and be as descriptive as possible.
-            4. Do not provide any story progression or any dialogue, only a description and context of the scenario.
-            5. Describe in detail character feelings, appearances and clothtes.
-            """;
-
-        var StoryInformation = $"""
-            Character Information:
-            {string.Join("\n\n", _scenario.NPCs.Select(npc =>
-                $"{npc.Name}:\n{npc.BackStory}\nPersonality: {string.Join(", ", npc.PersonalityTraits.Select(t => $"{t.Key}: {t.Value}"))}"))}
-            
-            Background Context:
-            {string.Join("\n", _scenario.StoryBackground.Select(bg => bg.Summary))}
-            
-            Current situation: {_scenario.StoryBackground.Last().Summary}
-            """;
-
-        return instructionType switch
-        {
-            InstructionType.StoryProgression => $"{defaultInstruction}{StoryInformation}",
-            InstructionType.GeneralDescription => $"{describeInstruction}{StoryInformation}",
-            _ => throw new InvalidOperationException($"Invalid enum {instructionType}")
-        };
+        _scenario = scenario;
     }
 
     public void SelectPromptBasedOnUserInput(ChatHistory history, string userInput)
-    {       
-        var instructionType = InstructionType.StoryProgression;
+    {
+        var instructionType = DetermineInstructionType(userInput);
+        var systemPrompt = CreateSystemPrompt(instructionType);
 
-        if (Regex.IsMatch(userInput, @"^[^\w\s]*describe", RegexOptions.IgnoreCase))
+        // Remove existing prompts of the same type
+        var existingPrompts = history
+            .Where(m => m.Role == AuthorRole.System &&
+                        m.Content!.Contains($"[Instruction-{instructionType}]"))
+            .ToList();
+
+        foreach (var prompt in existingPrompts)
         {
-            instructionType = InstructionType.GeneralDescription;
+            history.Remove(prompt);
         }
 
-        var chatMessage = new ChatMessageContent(AuthorRole.System, ResponseInstructions(instructionType));
-
-        var promptMessages = history.Where(m => m.Role == AuthorRole.System && m.Content!.Contains("You are an AI managing")).ToList();
-
-        if (promptMessages != null)
-        {
-            promptMessages.ForEach(m => history.Remove(m));
-        }
+        // Add new prompt with type marker
+        var chatMessage = new ChatMessageContent(AuthorRole.System, $"[Instruction-{instructionType}]\n{systemPrompt}");
 
         history.Insert(0, chatMessage);
     }
+
+    public static InstructionType DetermineInstructionType(string userInput)
+    {
+        // Use more precise pattern matching
+        var describePatterns = new[]
+        {
+            @"^\s*\*\s*describe",
+            @"^\s*describe",
+            @"^\s*/describe",
+            @"^\s*\[describe\]"
+        };
+
+        return describePatterns.Any(pattern =>
+            Regex.IsMatch(userInput, pattern, RegexOptions.IgnoreCase))
+            ? InstructionType.GeneralDescription
+            : InstructionType.StoryProgression;
+    }
+
+    private string CreateSystemPrompt(InstructionType type)
+    {
+        var basePrompt = $"""
+        You are an AI managing multiple characters in a roleplay scenario.
+        Scenario: {_scenario!.ModuleInfo.Description}
+        """;
+
+        var specificInstructions = type switch
+        {
+            InstructionType.GeneralDescription => CreateDescriptionInstructions(),
+            InstructionType.StoryProgression => CreateStoryProgressionInstructions(),
+            _ => throw new ArgumentException($"Unsupported instruction type: {type}")
+        };
+
+        return $"{basePrompt}\n{specificInstructions}";
+    }
+
+    private string CreateDescriptionInstructions() => $"""
+                    STRICT DESCRIPTION MODE - NO DIALOGUE ALLOWED
+                    You are currently in DESCRIPTION ONLY mode. This is critically important:
+    
+                    1. ⚠️ ABSOLUTELY NO DIALOGUE OR CONVERSATIONS ALLOWED
+                    2. ⚠️ NO CHARACTER ACTIONS OR INTERACTIONS
+                    3. ⚠️ NO STORY PROGRESSION
+                    4. ⚠️ NO BRACKETED CHARACTER NAMES
+    
+                    Instead, you must ONLY provide:
+                    - Detailed physical descriptions
+                    - Environmental details
+                    - Sensory observations
+                    - Current state descriptions
+    
+                    Perspective: Writing from {_scenario.PlayerCharacter.Name}'s viewpoint
+    
+                    Required description elements:
+                    - Skin color, racce and ethnicity
+                    - Visual details of people and surroundings
+                    - Atmosphere and mood
+                    - Current state of the scene
+                    - Physical sexual characteristics
+                    - Clothing and appearance
+                    - Expressions and postures
+    
+                    Character Details to Describe:
+                    {string.Join("\n\n", _scenario.NPCs.Select(npc =>
+                        $"{npc.Name}:\n{npc.BackStory}\nAppearance: {npc.PersonalityTraits["appearance"]}\nClothing: {npc.PersonalityTraits["cloths"]}"))}
+    
+                    Remember: This is PURELY DESCRIPTIVE. If you include any dialogue or character interactions, you are violating these instructions.
+                    """;
+
+    private string CreateStoryProgressionInstructions() => $"""
+                        ROLEPLAY INSTRUCTIONS:
+                        1. Controlled characters: {string.Join(", ", _scenario.NPCs.Select(x => x.Name))}
+                        2. Player character ({_scenario.PlayerCharacter.Name}) is controlled by human
+                        3. Requirements:
+                           - Stay in character
+                           - Use [Character] prefixes for dialogue
+                           - Maintain consistent personalities
+                           - Respect scenario constraints
+                        Character Information:
+                        {string.Join("\n\n", _scenario.NPCs.Select(npc =>
+                            $"{npc.Name}:\n{npc.BackStory}\nPersonality: {string.Join(", ", npc.PersonalityTraits.Select(t => $"{t.Key}: {t.Value}"))}"))}
+
+                        Background Context:
+                        {string.Join("\n", _scenario.StoryBackground.Select(bg => bg.Summary))}
+
+                        Current situation: {_scenario.StoryBackground.Last().Summary}
+                        """;
 }
