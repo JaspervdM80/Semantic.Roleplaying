@@ -11,11 +11,18 @@
 	<title>Roleplay Chat</title>
 	<base href="~/" />
 	<link rel="stylesheet" href="css/app.css" />
-	<HeadOutlet />
+	<component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
 <body>
-	<Routes />
-	<script src="_framework/blazor.web.js"></script>
+	<component type="typeof(App)" render-mode="ServerPrerendered" />
+
+	<div id="blazor-error-ui">
+		An error has occurred. This application may no longer respond until reloaded.
+		<a href="" class="reload">Reload</a>
+		<a class="dismiss">🗙</a>
+	</div>
+
+	<script src="_framework/blazor.server.js"></script>
 	<script src="js/app.js"></script>
 </body>
 </html>

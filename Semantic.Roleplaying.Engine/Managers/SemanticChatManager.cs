@@ -18,10 +18,10 @@ public class SemanticChatManager : IChatManager
         _collectionName = string.Empty;
     }
 
-    public void Load(string scenarioId)
+    public async Task Load(string scenarioId)
     {
         _collectionName = $"chat_history_{scenarioId}";
-        CreateCollectionIfItDoesNotExists().Wait();
+        await CreateCollectionIfItDoesNotExists();
     }
 
     public async Task SaveMessage(ChatMessageContent message, int sequenceNumber, bool isInstruction)

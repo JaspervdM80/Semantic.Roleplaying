@@ -4,6 +4,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Remove="Data\sleepover_scenario.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Data\sleepover_scenario.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Semantic.Roleplaying.Engine\Semantic.Roleplaying.Engine.csproj" />

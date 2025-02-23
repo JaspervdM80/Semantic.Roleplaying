@@ -42,7 +42,7 @@ public class RoleplayService : IRoleplayService
             }
         ) ?? throw new Exception("Failed to load scenario");
 
-        _chatManager.Load(_scenario.ModuleInfo.Id);
+        await _chatManager.Load(_scenario.ModuleInfo.Id);
 
         await LoadChatHistoryAsync();
     }
