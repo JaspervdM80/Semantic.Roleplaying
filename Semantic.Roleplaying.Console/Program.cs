@@ -13,59 +13,7 @@ using Semantic.Roleplaying.Engine.Services;
 
 try
 {
-    var apiKey = "no-key";
-    var embeddingModel = "text-embedding-ada-002";
-    var lmEndpoint = new Uri("http://localhost:1234/v1");
-    var embedEndpoint = new Uri("http://localhost:5000/v1");
-    var dimensions = 1024;
-
-    var httpClient = new HttpClient
-    {
-        BaseAddress = lmEndpoint,      
-    };
-
-    var lmOpenAIOptions = new OpenAIClientOptions { Endpoint = lmEndpoint };
-    var embedOpenAIOptions = new OpenAIClientOptions { Endpoint = embedEndpoint };
-    var apiKeyCredential = new ApiKeyCredential(apiKey);
-
-    // Configure memory store with proper vector size for BGE model (1024 dimensions)
-    var memoryStore = new QdrantMemoryStore("http://localhost:6333", dimensions);
-
-    // Configure memory with explicit OpenAI settings
-    var memoryBuilder = new MemoryBuilder()
-        .WithOpenAITextEmbeddingGeneration(
-            modelId: embeddingModel,
-            apiKey: apiKey,
-            httpClient: new HttpClient() { BaseAddress = embedEndpoint })
-        .WithMemoryStore(memoryStore);
-
-    var memory = memoryBuilder.Build();
-
-    // Setup Kernel with services
-    var kernel = Kernel.CreateBuilder()
-        .AddOpenAITextEmbeddingGeneration(
-            modelId: embeddingModel,
-            openAIClient: new OpenAIClient(apiKeyCredential, embedOpenAIOptions),
-            dimensions: dimensions)
-        .AddOpenAIChatCompletion(
-            modelId: "l3-8b-stheno-v3.2-iq-imatrix",
-            openAIClient: new OpenAIClient(apiKeyCredential, lmOpenAIOptions))
-        .Build();
-
-    // Configure services
-    var services = new ServiceCollection();
-    services.AddLogging(builder =>
-    {
-        builder.AddConsole();
-        builder.SetMinimumLevel(LogLevel.Debug);
-    });
-
-    services.AddSingleton(kernel);
-    services.AddSingleton(memory);
-    services.AddSingleton<IMemoryStore>(memoryStore);
-    services.AddScoped<IChatManager, SemanticChatManager>();
-    services.AddScoped<IRoleplayService, RoleplayService>();
-    services.AddScoped<IQdrantDiagnostics, QdrantDiagnostics>();
+   
 
     var serviceProvider = services.BuildServiceProvider();
 

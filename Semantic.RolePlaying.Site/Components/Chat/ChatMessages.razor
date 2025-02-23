@@ -1,0 +1,58 @@
+﻿@inject IJSRuntime JS
+
+<div class="messages-container" @ref="messagesDiv">
+	<Virtualize Items="Messages" Context="message" TItem="ChatMessage">
+		<div class="message @GetMessageClass(message)">
+			@if (message.IsUserMessage)
+			{
+				<div class="message-user">
+					<div class="message-header">[Jasper]</div>
+					<div class="message-content">
+						@((MarkupString)FormatMessage(message.Content))
+					</div>
+				</div>
+			}
+			else
+			{
+				foreach (var response in message.Responses)
+				{
+					<div class="message-character">
+						<div class="message-header">[@response.Character]</div>
+						<div class="message-content">
+							@((MarkupString)FormatMessage(response.Content))
+						</div>
+					</div>
+				}
+			}
+			<div class="message-timestamp">
+				@message.Timestamp.ToString("HH:mm")
+			</div>
+		</div>
+	</Virtualize>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public List<ChatMessage> Messages { get; set; } = null!;
+
+	[Parameter]
+	public EventCallback OnScrollToBottom { get; set; }
+
+	private ElementReference messagesDiv;
+
+	public async Task ScrollToBottomAsync()
+	{
+		await JS.InvokeVoidAsync("scrollToBottom", messagesDiv);
+	}
+
+	private string GetMessageClass(ChatMessage message) =>
+		message.IsUserMessage ? "user" : "character";
+
+	private string FormatMessage(string message)
+	{
+		return System.Text.RegularExpressions.Regex.Replace(
+			message,
+			@"([""].*?[""]|\*.*?\*)",
+			match => $"<span class='highlight'>{match.Value}</span>");
+	}
+}

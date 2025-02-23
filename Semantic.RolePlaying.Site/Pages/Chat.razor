@@ -1,0 +1,125 @@
+﻿@page "/"
+@using Semantic.Roleplaying.Engine.Services
+@inject IRoleplayService RoleplayService
+@inject IChatState ChatState
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Roleplay Chat</PageTitle>
+
+<div class="chat-container">
+    <ChatHeader Title="Sleepover Roleplay Chat" Subtitle="Playing as Jasper" />
+    
+    <ChatMessages @ref="messagesComponent" 
+                 Messages="ChatState.Messages" 
+                 OnScrollToBottom="ScrollToBottom" />
+    
+    <ChatInput @bind-Message="currentMessage" 
+               OnSend="SendMessage" />
+</div>
+
+@code {
+    private string currentMessage = "";
+    private bool isInitialized;
+    private ChatMessages? messagesComponent;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!isInitialized)
+        {
+            await InitializeChatAsync();
+            ChatState.OnChange += StateHasChanged;
+            isInitialized = true;
+        }
+    }
+
+    private async Task InitializeChatAsync()
+    {
+        await RoleplayService.LoadScenario();
+        var history = RoleplayService.GetChatHistory();
+        
+        foreach (var msg in history)
+        {
+            ProcessMessage(msg.Content ?? string.Empty, msg.Role.ToString() == "User");
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(currentMessage)) return;
+
+        var userMessage = currentMessage;
+        currentMessage = "";
+
+        ProcessMessage(userMessage, true);
+        
+        var response = await RoleplayService.GetResponseAsync(userMessage);
+        ProcessMessage(response, false);
+        
+        await ScrollToBottom();
+    }
+
+    private void ProcessMessage(string content, bool isUser)
+    {
+        var message = new Models.ChatMessage
+        {
+            Timestamp = DateTime.Now,
+            IsUserMessage = isUser,
+            Character = isUser ? "Jasper" : "",
+            Content = content,
+            Responses = isUser ? new() : ParseCharacterResponses(content)
+        };
+
+        ChatState.AddMessage(message);
+    }
+
+    private List<Models.CharacterResponse> ParseCharacterResponses(string content)
+    {
+        var responses = new List<Models.CharacterResponse>();
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        Models.CharacterResponse? currentResponse = null;
+        
+        foreach (var line in lines)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(line, @"^\[(.*?)\](.*)");
+            if (match.Success)
+            {
+                if (currentResponse != null)
+                {
+                    responses.Add(currentResponse);
+                }
+                
+                currentResponse = new Models.CharacterResponse
+                {
+                    Character = match.Groups[1].Value.Trim(),
+                    Content = match.Groups[2].Value.Trim()
+                };
+            }
+            else if (currentResponse != null)
+            {
+                currentResponse.Content += "\n" + line.Trim();
+            }
+        }
+        
+        if (currentResponse != null)
+        {
+            responses.Add(currentResponse);
+        }
+        
+        return responses;
+    }
+
+    private async Task ScrollToBottom()
+    {
+        if (messagesComponent != null)
+        {
+            await messagesComponent.ScrollToBottomAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        ChatState.OnChange -= StateHasChanged;
+    }
+}

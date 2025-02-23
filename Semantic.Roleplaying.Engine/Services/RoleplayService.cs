@@ -3,10 +3,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Semantic.Roleplaying.Engine.Enums;
 using Semantic.Roleplaying.Engine.Managers;
 using Semantic.Roleplaying.Engine.Models.Scenario;
 using Semantic.Roleplaying.Engine.Prompts;
-using Semantic.Roleplaying.Engine.Enums;
 
 namespace Semantic.Roleplaying.Engine.Services;
 
@@ -18,6 +18,8 @@ public class RoleplayService : IRoleplayService
     private readonly ILogger<RoleplayService> _logger;
     private readonly IChatManager _chatManager;
     private int _messageCounter;
+    private const int MAX_WINDOW_SIZE = 10; // Keep last N messages in active window
+    private const int SUMMARY_THRESHOLD = 20; // Summarize after N messages
 
     public RoleplayService(Kernel kernel, IChatManager chatManager, ILogger<RoleplayService> logger)
     {
@@ -63,60 +65,151 @@ public class RoleplayService : IRoleplayService
 
             if (!string.IsNullOrEmpty(userInput))
             {
+                // Add user message to history
                 _chatHistory.AddUserMessage($"[Jasper] {userInput}");
+                await _chatManager.SaveMessage(_chatHistory.Last(), _messageCounter++, false);
 
+                // Get relevant context from semantic memory
                 if (!isDescriptionCommand)
                 {
-                    await _chatManager.SaveMessage(_chatHistory.Last(), _messageCounter++, false);
-
-                    var similarMessages = await _chatManager.SearchSimilarMessages(userInput);
-                    if (similarMessages.Any())
+                    var relevantContext = await GetRelevantContext(userInput);
+                    if (!string.IsNullOrEmpty(relevantContext))
                     {
-                        var contextPrompt = $"Previous relevant context:\n{string.Join("\n", similarMessages)}";
-                        _chatHistory.AddSystemMessage(contextPrompt);
-                        await _chatManager.SaveMessage(_chatHistory.Last(), _messageCounter++, false);
+                        _chatHistory.AddSystemMessage(relevantContext);
                     }
-
                 }
             }
+
+            // Optimize chat history before sending to LLM
+            var optimizedHistory = OptimizeChatHistory();
 
             var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
             var promptSelector = new InitialPromptSelector(_scenario!);
 
-            promptSelector.SelectPromptBasedOnUserInput(_chatHistory, userInput);
+            // Apply prompt to optimized history
+            promptSelector.SelectPromptBasedOnUserInput(optimizedHistory, userInput);
 
             var settings = new OpenAIPromptExecutionSettings
             {
-                Temperature = isDescriptionCommand ? 0.7f : 0.4f, // Higher temperature for descriptions
-                MaxTokens = isDescriptionCommand ? 1000 : 700,    // More tokens for descriptions
-                TopP = isDescriptionCommand ? 0.8f : 0.4f,        // Higher creativity for descriptions
+                Temperature = isDescriptionCommand ? 0.7f : 0.4f,
+                MaxTokens = isDescriptionCommand ? 1000 : 700,
+                TopP = isDescriptionCommand ? 0.8f : 0.4f,
                 FrequencyPenalty = 0.8f,
                 PresencePenalty = 0.8f,
                 ChatSystemPrompt = isDescriptionCommand ?
-                "You MUST ONLY provide descriptive content. NO dialogue or interactions allowed." : null
+                    "You MUST ONLY provide descriptive content. NO dialogue or interactions allowed." : null
             };
 
             var response = await chatCompletionService.GetChatMessageContentsAsync(
-                _chatHistory,
+                optimizedHistory,
                 settings,
                 _kernel);
 
             var responseContent = response.FirstOrDefault()?.Content ?? string.Empty;
 
-            if (string.IsNullOrEmpty(responseContent))
+            if (!string.IsNullOrEmpty(responseContent))
             {
-                throw new Exception("Received empty response from LLM");
+                _chatHistory.AddAssistantMessage(responseContent);
+                await _chatManager.SaveMessage(_chatHistory.Last(), _messageCounter++, false);
+
+                // Check if we need to summarize older messages
+                if (_messageCounter > SUMMARY_THRESHOLD)
+                {
+                    await SummarizeOldMessages();
+                }
             }
 
-            _chatHistory.AddAssistantMessage(responseContent);
-            await _chatManager.SaveMessage(_chatHistory.Last(), _messageCounter++, false);
-
-            return responseContent;
+            return responseContent ?? string.Empty;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in GetResponseAsync");
             return "Error: Unable to process response. Please try again.";
+        }
+    }
+
+    private ChatHistory OptimizeChatHistory()
+    {
+        var optimizedHistory = new ChatHistory();
+
+        // Always include the system prompt
+        var systemPrompt = _chatHistory.FirstOrDefault(m => m.Role == AuthorRole.System);
+        if (systemPrompt != null)
+        {
+            optimizedHistory.Add(systemPrompt);
+        }
+
+        // Add the most recent messages within the window
+        var recentMessages = _chatHistory
+            .Where(m => m.Role != AuthorRole.System)
+            .TakeLast(MAX_WINDOW_SIZE);
+
+        foreach (var message in recentMessages)
+        {
+            optimizedHistory.Add(message);
+        }
+
+        return optimizedHistory;
+    }
+
+    private async Task<string> GetRelevantContext(string userInput)
+    {
+        var similarMessages = await _chatManager.SearchSimilarMessages(userInput, 3);
+        if (similarMessages.Any())
+        {
+            return $"Relevant context:\n{string.Join("\n", similarMessages)}";
+        }
+        return string.Empty;
+    }
+
+    private async Task SummarizeOldMessages()
+    {
+        try
+        {
+            // Get messages outside the recent window
+            var oldMessages = _chatHistory
+                .Where(m => m.Role != AuthorRole.System)
+                .Take(_chatHistory.Count - MAX_WINDOW_SIZE);
+
+            if (!oldMessages.Any())
+                return;
+
+            var summarizationPrompt = "Summarize the following conversation while preserving key details and character interactions:\n";
+            summarizationPrompt += string.Join("\n", oldMessages.Select(m => m.Content));
+
+            // Create a new chat for summarization
+            var summaryChatHistory = new ChatHistory();
+            summaryChatHistory.AddSystemMessage(summarizationPrompt);
+
+            var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
+            var response = await chatCompletionService.GetChatMessageContentsAsync(
+                summaryChatHistory,
+                new OpenAIPromptExecutionSettings { MaxTokens = 500 },
+                _kernel);
+
+            var summary = response.FirstOrDefault()?.Content;
+            if (!string.IsNullOrEmpty(summary))
+            {
+                // Save summary to semantic memory
+                await _chatManager.SaveMessage(
+                    new ChatMessageContent(AuthorRole.System, $"Conversation Summary: {summary}"),
+                    _messageCounter++,
+                    true);
+
+                // Remove old messages from active history
+                _chatHistory = new ChatHistory();
+                _chatHistory.AddSystemMessage($"Previous Conversation Summary: {summary}");
+
+                // Add recent messages back
+                foreach (var message in oldMessages.TakeLast(MAX_WINDOW_SIZE))
+                {
+                    _chatHistory.Add(message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during message summarization");
         }
     }
 }

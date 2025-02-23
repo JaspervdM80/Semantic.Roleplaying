@@ -1,0 +1,37 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@namespace RoleplayBlazor.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<base href="~/" />
+	<link rel="icon" type="image/png" href="favicon.png" />
+	<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+	<component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+	@RenderSection("Styles", required: false)
+	<title>Roleplay Chat</title>
+</head>
+<body>
+	@RenderBody()
+
+	<div id="blazor-error-ui" class="hidden fixed bottom-0 w-full z-50 bg-red-600 text-white p-4">
+		<p class="text-center">An unhandled error has occurred.</p>
+		<a href="" class="underline">Reload</a>
+		<a class="dismiss underline float-right">🗙</a>
+	</div>
+
+	<script src="_framework/blazor.server.js"></script>
+	<script>
+		function scrollToBottom(elementId) {
+			const element = document.getElementById(elementId);
+			if (element) {
+				element.scrollTop = element.scrollHeight;
+			}
+		}
+	</script>
+	@RenderSection("Scripts", required: false)
+</body>
+</html>

@@ -1,10 +1,9 @@
-﻿using System.Text.Json;
-using Microsoft.SemanticKernel;
+﻿using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Memory;
+using Semantic.Roleplaying.Engine.Managers;
 using Semantic.Roleplaying.Engine.Models;
-
-namespace Semantic.Roleplaying.Engine.Managers;
+using System.Text.Json;
 
 public class SemanticChatManager : IChatManager
 {
@@ -25,11 +24,17 @@ public class SemanticChatManager : IChatManager
         CreateCollectionIfItDoesNotExists().Wait();
     }
 
-    /// <summary>
-    /// Saves a chat message to semantic memory.
-    /// </summary>
     public async Task SaveMessage(ChatMessageContent message, int sequenceNumber, bool isInstruction)
     {
+        // Don't store system messages that contain context
+        if (message.Role == AuthorRole.System &&
+            (message.Content?.Contains("Previous relevant context") == true ||
+             message.Content?.Contains("Relevant context") == true ||
+             message.Content?.Contains("Conversation Summary") == true))
+        {
+            return;
+        }
+
         var metadata = ChatMessageMetadata.FromChatMessage(message, sequenceNumber, isInstruction);
         var id = GetMessageId(sequenceNumber);
 
@@ -41,9 +46,6 @@ public class SemanticChatManager : IChatManager
             additionalMetadata: JsonSerializer.Serialize(metadata));
     }
 
-    /// <summary>
-    /// Loads the chat history from semantic memory.
-    /// </summary>
     public async Task<ChatHistory> LoadChatHistory(int maxMessages = 20)
     {
         try
@@ -61,19 +63,46 @@ public class SemanticChatManager : IChatManager
 
             return chatHistory;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return [];
         }
     }
 
-    /// <summary>
-    /// Searches for semantically similar messages.
-    /// </summary>
     public async Task<IReadOnlyList<string>> SearchSimilarMessages(string query, int limit = 5)
     {
-        var memories = await GetMemoriesByRelevance(query, limit);
-        return memories.Select(m => m.Metadata.Text).ToList();
+        var memories = new List<(MemoryQueryResult Memory, ChatMessageMetadata Metadata, double RelevanceScore)>();
+
+        await foreach (var memory in _memory.SearchAsync(
+            collection: _collectionName,
+            query: query,
+            limit: limit * 2, // Request more to allow for filtering
+            minRelevanceScore: 0.7))
+        {
+            var metadata = DeserializeMetadata(memory.Metadata.AdditionalMetadata);
+
+            // Skip system messages containing context or summaries
+            if (metadata.Role == "system" &&
+                (memory.Metadata.Text.Contains("Previous relevant context") ||
+                 memory.Metadata.Text.Contains("Relevant context") ||
+                 memory.Metadata.Text.Contains("Conversation Summary")))
+            {
+                continue;
+            }
+
+            memories.Add((memory, metadata, memory.Relevance));
+        }
+
+        // Order by relevance and sequence number
+        var orderedMemories = memories
+            .OrderByDescending(m => m.RelevanceScore)
+            .ThenBy(m => m.Metadata.SequenceNumber)
+            .Take(limit)
+            .ToList();
+
+        return orderedMemories
+            .Select(m => FormatMessageForContext(m.Memory.Metadata.Text, m.Metadata))
+            .ToList();
     }
 
     private static string GetMessageId(int sequenceNumber) => $"msg_{sequenceNumber}";
@@ -96,20 +125,6 @@ public class SemanticChatManager : IChatManager
             .ToList();
     }
 
-    private async Task<IReadOnlyList<MemoryQueryResult>> GetMemoriesByRelevance(string query, int limit)
-    {
-        var memories = new List<MemoryQueryResult>();
-        await foreach (var memory in _memory.SearchAsync(
-            collection: _collectionName,
-            query: query,
-            limit: limit,
-            minRelevanceScore: 0.7))
-        {
-            memories.Add(memory);
-        }
-        return memories;
-    }
-
     private static ChatMessageMetadata DeserializeMetadata(string metadata)
     {
         return JsonSerializer.Deserialize<ChatMessageMetadata>(metadata)
@@ -118,7 +133,7 @@ public class SemanticChatManager : IChatManager
 
     private static void AddMessageToHistory(ChatHistory history, ChatMessageMetadata metadata, string content)
     {
-        switch (metadata.Role)
+        switch (metadata.Role.ToLower())
         {
             case "system":
                 history.AddSystemMessage(content);
@@ -134,6 +149,15 @@ public class SemanticChatManager : IChatManager
         }
     }
 
+    private static string FormatMessageForContext(string message, ChatMessageMetadata metadata)
+    {
+        // Extract character name from message if present (e.g., "[Emma] Hello" -> "Emma")
+        var characterMatch = System.Text.RegularExpressions.Regex.Match(message, @"^\[([^\]]+)\]");
+        var character = characterMatch.Success ? characterMatch.Groups[1].Value : metadata.Role;
+
+        return $"[{character}] {message}";
+    }
+
     private async Task CreateCollectionIfItDoesNotExists()
     {
         try
@@ -143,7 +167,9 @@ public class SemanticChatManager : IChatManager
                 await _memoryStore.CreateCollectionAsync(_collectionName);
             }
         }
-        catch (Exception ex)
-        { }
+        catch (Exception)
+        {
+            // Log or handle collection creation error
+        }
     }
 }

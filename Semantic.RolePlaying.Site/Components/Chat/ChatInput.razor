@@ -1,0 +1,35 @@
+﻿<div class="chat-input">
+	<input @bind="Message"
+		   @bind:event="oninput"
+		   @onkeyup="HandleKeyPress"
+		   placeholder="Type your message as Jasper..." />
+
+	<button @onclick="SendMessage"
+			disabled="@string.IsNullOrWhiteSpace(Message)">
+		Send
+	</button>
+</div>
+
+@code {
+	[Parameter]
+	public string Message { get; set; } = "";
+
+	[Parameter]
+	public EventCallback<string> MessageChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnSend { get; set; }
+
+	private async Task HandleKeyPress(KeyboardEventArgs e)
+	{
+		if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(Message))
+		{
+			await SendMessage();
+		}
+	}
+
+	private async Task SendMessage()
+	{
+		await OnSend.InvokeAsync();
+	}
+}
