@@ -1,0 +1,9 @@
+﻿<div class="spinner-overlay @(IsVisible ? "visible" : "")">
+	<div class="spinner"></div>
+	<div class="spinner-text">Waiting for response...</div>
+</div>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+}

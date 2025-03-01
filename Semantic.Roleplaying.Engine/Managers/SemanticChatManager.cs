@@ -1,15 +1,17 @@
-﻿using Microsoft.SemanticKernel;
+﻿using System.Text.Json;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Memory;
-using Semantic.Roleplaying.Engine.Managers;
 using Semantic.Roleplaying.Engine.Models;
-using System.Text.Json;
+
+namespace Semantic.Roleplaying.Engine.Managers;
 
 public class SemanticChatManager : IChatManager
 {
     private readonly ISemanticTextMemory _memory;
     private string _collectionName;
     private readonly IMemoryStore _memoryStore;
+
 
     public SemanticChatManager(ISemanticTextMemory memory, IMemoryStore memoryStore)
     {
@@ -24,7 +26,7 @@ public class SemanticChatManager : IChatManager
         await CreateCollectionIfItDoesNotExists();
     }
 
-    public async Task SaveMessage(ChatMessageContent message, int sequenceNumber, bool isInstruction)
+    public async Task SaveMessage(ChatMessageContent message, int sequenceNumber)
     {
         // Don't store system messages that contain context
         if (message.Role == AuthorRole.System &&
@@ -35,7 +37,7 @@ public class SemanticChatManager : IChatManager
             return;
         }
 
-        var metadata = ChatMessageMetadata.FromChatMessage(message, sequenceNumber, isInstruction);
+        var metadata = BotChatMessageMetadata.FromChatMessage(message, sequenceNumber);
         var id = GetMessageId(sequenceNumber);
 
         await _memory.SaveInformationAsync(
@@ -46,22 +48,15 @@ public class SemanticChatManager : IChatManager
             additionalMetadata: JsonSerializer.Serialize(metadata));
     }
 
-    public async Task<ChatHistory> LoadChatHistory(int maxMessages = 20)
+    public async Task<List<BotChatMessage>> LoadChatHistory(int maxMessages = 100)
     {
         try
         {
             await CreateCollectionIfItDoesNotExists();
 
-            var chatHistory = new ChatHistory();
-            var memories = await GetOrderedMemories(maxMessages);
+            var chatHistory = await GetOrderedMemories(maxMessages);
 
-            foreach (var memory in memories)
-            {
-                var metadata = DeserializeMetadata(memory.Metadata.AdditionalMetadata);
-                AddMessageToHistory(chatHistory, metadata, memory.Metadata.Text);
-            }
-
-            return chatHistory;
+            return chatHistory.ToList();
         }
         catch (Exception)
         {
@@ -69,9 +64,9 @@ public class SemanticChatManager : IChatManager
         }
     }
 
-    public async Task<IReadOnlyList<string>> SearchSimilarMessages(string query, int limit = 5)
+    public async Task<IReadOnlyList<BotChatMessage>> SearchSimilarMessages(string query, int limit = 5)
     {
-        var memories = new List<(MemoryQueryResult Memory, ChatMessageMetadata Metadata, double RelevanceScore)>();
+        var memories = new List<BotChatMessage>();
 
         await foreach (var memory in _memory.SearchAsync(
             collection: _collectionName,
@@ -90,26 +85,26 @@ public class SemanticChatManager : IChatManager
                 continue;
             }
 
-            memories.Add((memory, metadata, memory.Relevance));
+            memories.Add(new BotChatMessage
+            {
+                Content = memory.Metadata.Text,
+                Relevance = memory.Relevance,
+                Metadata = metadata
+            });
         }
 
         // Order by relevance and sequence number
-        var orderedMemories = memories
-            .OrderByDescending(m => m.RelevanceScore)
-            .ThenBy(m => m.Metadata.SequenceNumber)
+        return memories
+            .OrderByDescending(m => m.Relevance)
             .Take(limit)
-            .ToList();
-
-        return orderedMemories
-            .Select(m => FormatMessageForContext(m.Memory.Metadata.Text, m.Metadata))
             .ToList();
     }
 
     private static string GetMessageId(int sequenceNumber) => $"msg_{sequenceNumber}";
 
-    private async Task<IReadOnlyList<MemoryQueryResult>> GetOrderedMemories(int maxMessages)
+    private async Task<IReadOnlyList<BotChatMessage>> GetOrderedMemories(int maxMessages)
     {
-        var memories = new List<MemoryQueryResult>();
+        var memories = new List<BotChatMessage>();
 
         await foreach (var memory in _memory.SearchAsync(
             collection: _collectionName,
@@ -117,46 +112,53 @@ public class SemanticChatManager : IChatManager
             limit: maxMessages,
             minRelevanceScore: 0.0))
         {
-            memories.Add(memory);
+            var metadata = DeserializeMetadata(memory.Metadata.AdditionalMetadata);
+
+            memories.Add(new BotChatMessage
+            {
+                Content = memory.Metadata.Text,
+                Relevance = memory.Relevance,
+                Metadata = metadata
+            });
         }
 
         return memories
-            .OrderBy(m => DeserializeMetadata(m.Metadata.AdditionalMetadata).SequenceNumber)
+            .OrderBy(m => m.Metadata.SequenceNumber)
             .ToList();
     }
 
-    private static ChatMessageMetadata DeserializeMetadata(string metadata)
+    private static BotChatMessageMetadata DeserializeMetadata(string metadata)
     {
-        return JsonSerializer.Deserialize<ChatMessageMetadata>(metadata)
+        return JsonSerializer.Deserialize<BotChatMessageMetadata>(metadata)
             ?? throw new InvalidOperationException("Failed to deserialize message metadata");
     }
 
-    private static void AddMessageToHistory(ChatHistory history, ChatMessageMetadata metadata, string content)
-    {
-        switch (metadata.Role.ToLower())
-        {
-            case "system":
-                history.AddSystemMessage(content);
-                break;
-            case "assistant":
-                history.AddAssistantMessage(content);
-                break;
-            case "user":
-                history.AddUserMessage(content);
-                break;
-            default:
-                throw new ArgumentException($"Unknown role: {metadata.Role}");
-        }
-    }
+    //private static void AddMessageToHistory(ChatHistory history, BotChatMessage message)
+    //{
+    //    switch (message.Metadata.Role.ToLower())
+    //    {
+    //        case "system":
+    //            history.AddSystemMessage(message.Content);
+    //            break;
+    //        case "assistant":
+    //            history.AddAssistantMessage(message.Content);
+    //            break;
+    //        case "user":
+    //            history.AddUserMessage(message.Content);
+    //            break;
+    //        default:
+    //            throw new ArgumentException($"Unknown role: {message.Metadata.Role}");
+    //    }
+    //}
 
-    private static string FormatMessageForContext(string message, ChatMessageMetadata metadata)
-    {
-        // Extract character name from message if present (e.g., "[Emma] Hello" -> "Emma")
-        var characterMatch = System.Text.RegularExpressions.Regex.Match(message, @"^\[([^\]]+)\]");
-        var character = characterMatch.Success ? characterMatch.Groups[1].Value : metadata.Role;
+    //private static string FormatMessageForContext(string message, BotChatMessageMetadata metadata)
+    //{
+    //    // Extract character name from message if present (e.g., "[Emma] Hello" -> "Emma")
+    //    var characterMatch = System.Text.RegularExpressions.Regex.Match(message, @"^\[([^\]]+)\]");
+    //    var character = characterMatch.Success ? characterMatch.Groups[1].Value : metadata.Role;
 
-        return $"[{character}] {message}";
-    }
+    //    return $"[{character}] {message}";
+    //}
 
     private async Task CreateCollectionIfItDoesNotExists()
     {

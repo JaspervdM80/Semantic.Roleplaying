@@ -1,0 +1,31 @@
+﻿@using Semantic.Roleplaying.Engine.Models.Scenario
+
+<div class="scenario-overview">
+	<div class="scenario-header">
+		@foreach (var story in Scenario.StoryBackground)
+		{
+			<p class="scenario-description">@story.Summary</p>
+		}
+	</div>
+
+	<div class="character-info">
+		<div class="player-character">
+			<h3>Your Character</h3>
+			<div class="character-card">
+				<h4>@Scenario.PlayerCharacter.Name</h4>
+				<p>@Scenario.PlayerCharacter.BackStory</p>
+				<div class="traits">
+					@foreach (var trait in Scenario.PlayerCharacter.PersonalityTraits)
+					{
+						<span class="trait">@trait.Key: @trait.Value</span>
+					}
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public ScenarioContext Scenario { get; set; } = null!;
+}

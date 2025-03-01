@@ -1,5 +1,6 @@
 ﻿@page "/"
 @using Semantic.Roleplaying.Engine.Services
+@using Semantic.Roleplaying.Engine.Models.Scenario
 @inject IRoleplayService RoleplayService
 @inject IChatState ChatState
 @inject IJSRuntime JS
@@ -8,56 +9,107 @@
 <PageTitle>Roleplay Chat</PageTitle>
 
 <div class="chat-container">
-    <ChatHeader Title="Sleepover Roleplay Chat" Subtitle="Playing as Jasper" />
-    
-    <ChatMessages @ref="messagesComponent" 
-                 Messages="ChatState.Messages" 
-                 OnScrollToBottom="ScrollToBottom" />
-    
-    <ChatInput @bind-Message="currentMessage" 
-               OnSend="SendMessage" />
+	<ChatHeader Title="Birthday Sleepover" />
+
+	@if (initialized)
+	{
+		<ScenarioOverview Scenario="scenario!" />
+
+		<ChatMessages @ref="messagesComponent"
+					  Messages="ChatState.Messages"
+					  OnScrollToBottom="ScrollToBottom" />
+
+		<ChatInput Message="@currentMessage"
+				   MessageChanged="@((value) => currentMessage = value)"
+				   OnSend="SendMessage" />
+
+		<div class="spinner-overlay @(isResponding ? "visible" : "")">
+			<div class="spinner"></div>
+			<div class="spinner-text">Waiting for response...</div>
+		</div>
+	}
+	else
+	{
+		<div class="loading-initial">
+			<div class="spinner"></div>
+			<div>Loading scenario...</div>
+		</div>
+	}
 </div>
 
 @code {
-    private string currentMessage = "";
-    private bool isInitialized;
-    private ChatMessages? messagesComponent;
+	private string currentMessage = "";
+	private bool initialized;
+	private bool isResponding;
+	private ChatMessages? messagesComponent;
+	private ScenarioContext? scenario;
 
-    protected override async Task OnInitializedAsync()
-    {
-        if (!isInitialized)
-        {
-            await InitializeChatAsync();
-            ChatState.OnChange += StateHasChanged;
-            isInitialized = true;
-        }
-    }
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			await InitializeChatAsync();
+			initialized = true;
+			StateHasChanged();
+		}
+	}
 
-    private async Task InitializeChatAsync()
-    {
-        await RoleplayService.LoadScenario();
-        var history = RoleplayService.GetChatHistory();
-        
-        foreach (var msg in history)
-        {
-            ProcessMessage(msg.Content ?? string.Empty, msg.Role.ToString() == "User");
-        }
-    }
+	private async Task InitializeChatAsync()
+	{
+		try
+		{
+			await RoleplayService.LoadScenario();
+			scenario = RoleplayService.GetScenarioContext();
 
-    private async Task SendMessage()
-    {
-        if (string.IsNullOrWhiteSpace(currentMessage)) return;
+			var history = RoleplayService.GetChatHistory();
+			foreach (var msg in history.Where(m => !m.Metadata.Role.Equals("system", StringComparison.OrdinalIgnoreCase)))
+			{
+				ProcessMessage(msg.Content ?? string.Empty,
+					msg.Metadata.Role.Equals("user", StringComparison.OrdinalIgnoreCase));
+			}
 
-        var userMessage = currentMessage;
-        currentMessage = "";
+			if (!history.Any(m => !m.Metadata.Role.Equals("system", StringComparison.OrdinalIgnoreCase)))
+			{
+				var response = await RoleplayService.GetResponseAsync("");
+				ProcessMessage(response, false);
+			}
 
-        ProcessMessage(userMessage, true);
-        
-        var response = await RoleplayService.GetResponseAsync(userMessage);
-        ProcessMessage(response, false);
-        
-        await ScrollToBottom();
-    }
+			ChatState.OnChange += StateHasChanged;
+			await ScrollToBottom();
+		}
+		catch (Exception ex)
+		{
+			// Handle error appropriately
+			Console.WriteLine($"Error initializing chat: {ex.Message}");
+		}
+	}
+
+	private async Task SendMessage()
+	{
+		if (string.IsNullOrWhiteSpace(currentMessage)) return;
+
+		var userMessage = currentMessage;
+		currentMessage = string.Empty;
+		StateHasChanged();
+
+		ProcessMessage(userMessage, true);
+
+		isResponding = true;
+		StateHasChanged();
+
+		try
+		{
+			var response = await RoleplayService.GetResponseAsync(userMessage);
+			ProcessMessage(response, false);
+		}
+		finally
+		{
+			isResponding = false;
+			StateHasChanged();
+		}
+
+		await ScrollToBottom();
+	}
 
     private void ProcessMessage(string content, bool isUser)
     {

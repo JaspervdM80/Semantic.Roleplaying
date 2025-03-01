@@ -1,5 +1,5 @@
-﻿
-using Microsoft.SemanticKernel.ChatCompletion;
+﻿using Semantic.Roleplaying.Engine.Models;
+using Semantic.Roleplaying.Engine.Models.Scenario;
 
 namespace Semantic.Roleplaying.Engine.Services;
 
@@ -7,5 +7,6 @@ public interface IRoleplayService
 {
     Task<string> GetResponseAsync(string userInput);
     Task LoadScenario();
-    ChatHistory GetChatHistory();
+    List<BotChatMessage> GetChatHistory();
+    ScenarioContext GetScenarioContext();
 }

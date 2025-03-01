@@ -1,11 +1,9 @@
-﻿using System.ClientModel;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Connectors.Qdrant;
 using Microsoft.SemanticKernel.Memory;
-using OpenAI;
 using Semantic.Roleplaying.Engine.Configurations;
 using Semantic.Roleplaying.Engine.Diagnostics;
 using Semantic.Roleplaying.Engine.Managers;
@@ -16,24 +14,14 @@ namespace Semantic.Roleplaying.Engine.Extensions;
 public static class ServiceCollectionExtensions
 {
 
-    public static IServiceCollection AddAIServices(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddAIServices(this IServiceCollection services, IConfiguration configuration)
     {
         // Bind configuration
         var aiSettings = new AIServiceSettings();
         configuration.GetSection("AIServices").Bind(aiSettings);
         services.Configure<AIServiceSettings>(configuration.GetSection("AIServices"));
 
-
-        // Configure HttpClients
-        var lmHttpClient = new HttpClient { BaseAddress = new Uri(aiSettings.Endpoints.LanguageModel) };
         var embedHttpClient = new HttpClient { BaseAddress = new Uri(aiSettings.Endpoints.TextEmbedding) };
-
-        // Configure OpenAI clients
-        var lmOptions = new OpenAIClientOptions { Endpoint = new Uri(aiSettings.Endpoints.LanguageModel) };
-        var embedOptions = new OpenAIClientOptions { Endpoint = new Uri(aiSettings.Endpoints.TextEmbedding) };
-        var apiKeyCredential = new ApiKeyCredential(aiSettings.Authentication.ApiKey);
 
         // Configure memory store
         var memoryStore = new QdrantMemoryStore(
@@ -53,13 +41,12 @@ public static class ServiceCollectionExtensions
 
         // Configure Semantic Kernel
         var kernel = Kernel.CreateBuilder()
-            .AddOpenAITextEmbeddingGeneration(
+            .AddOllamaTextEmbeddingGeneration(
                 modelId: aiSettings.Models.EmbeddingModel,
-                openAIClient: new OpenAIClient(apiKeyCredential, embedOptions),
-                dimensions: aiSettings.VectorSettings.EmbeddingDimensions)
-            .AddOpenAIChatCompletion(
+                endpoint: new Uri(aiSettings.Endpoints.TextEmbedding))
+            .AddOllamaChatCompletion(
                 modelId: aiSettings.Models.ChatCompletionModel,
-                openAIClient: new OpenAIClient(apiKeyCredential, lmOptions))
+                endpoint: new Uri(aiSettings.Endpoints.LanguageModel))
             .Build();
         services.AddSingleton(kernel);
 
@@ -70,5 +57,4 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
-
 }
