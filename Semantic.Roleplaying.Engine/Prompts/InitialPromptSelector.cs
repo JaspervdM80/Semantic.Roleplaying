@@ -43,10 +43,10 @@ public class InitialPromptSelector
         // Use more precise pattern matching
         var describePatterns = new[]
         {
-            @"^\s*\*\s*describe",
-            @"^\s*describe",
-            @"^\s*/describe",
-            @"^\s*\[describe\]"
+            @"^\s*\*\s*describe|decribe",
+            @"^\s*describe|decribe",
+            @"^\s*/describe|decribe",
+            @"^\s*\[describe|decribe\]"
         };
 
         return describePatterns.Any(pattern =>
@@ -115,13 +115,24 @@ public class InitialPromptSelector
                            - Maintain consistent personalities
                            - Respect scenario constraints
 
+                        ## RULES TRUTH OR DARE:
+                        Every player takes a turn, that player must choose "truth" or "dare":
+                        - When the player chooses truth, one of the other players must ask 1 question.
+                        - When the player chooses dare, one of the other players must come-up with a dare.
+
                         ## CHARACTERS:
                         {string.Join("\n", _scenario.NPCs.Select(npc =>
                             $"{npc.Name}: {npc.BackStory}\nPersonality:\n {string.Join("\n- ", npc.PersonalityTraits.Select(t => $"{t.Key}: {t.Value}"))}"))}
 
-                        ## BACKGROUND CONTEXT:
+                        ## SCENARIO:
                         {string.Join("\n", _scenario.StoryBackground.Select(bg => $"{bg.Summary} ({string.Join(", ", bg.Context.Select(c => $"{c.Key}: {c.Value}"))})"))}
 
-                        Based on the above information, generate a realistic, immersive response that shows how the scene based on the provided history unfolds and how each character reacts.
+                        Based on the above scenario and the story progression below, generate a realistic response seen through the eyes of {_scenario.PlayerCharacter.Name} that shows how the story slowly unfolds and how each character reacts.
+                        Do not take any leaps in time unless prompted to do so.
+                        """;
+
+    public static string CreateSummary(string storyEvent) => $"""
+                        Create a concise summary (2-3 sentences) of the following story event:
+                        {storyEvent}
                         """;
 }

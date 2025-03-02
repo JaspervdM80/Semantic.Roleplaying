@@ -74,10 +74,10 @@ public class RoleplayService : IRoleplayService
 
             if (!string.IsNullOrEmpty(userInput))
             {
-                var input = $"[Jasper] {userInput}";
+                var role = isDescriptionCommand ? AuthorRole.System : AuthorRole.User;
 
                 // Add user message to history
-                _chatHistory.Add(new BotChatMessage() { Content = input, Role = AuthorRole.System.Label });
+                _chatHistory.Add(new BotChatMessage() { Content = userInput, Role = role.Label });
 
                 // Get relevant context from semantic memory
                 if (!isDescriptionCommand)
@@ -85,7 +85,7 @@ public class RoleplayService : IRoleplayService
                     relevantContext = (await _chatManager.SearchSimilarMessages(userInput, 3)).ToList();
                 }
 
-                await _chatManager.SaveMessage(new ChatMessageContent(AuthorRole.System, input), _messageCounter++);
+                _ = _chatManager.SaveMessage(new ChatMessageContent(role, userInput), _messageCounter++);
             }
 
             // Optimize chat history before sending to LLM
@@ -124,10 +124,10 @@ public class RoleplayService : IRoleplayService
                 await _chatManager.SaveMessage(optimizedHistory.Last(), _messageCounter++);
 
                 // Check if we need to summarize older messages
-                if (_messageCounter > SUMMARY_THRESHOLD)
-                {
-                    await SummarizeOldMessages();
-                }
+                //if (_messageCounter > SUMMARY_THRESHOLD)
+                //{
+                //    await SummarizeOldMessages();
+                //}
             }
 
             return responseContent ?? string.Empty;
@@ -166,13 +166,13 @@ public class RoleplayService : IRoleplayService
             switch (message.Role.ToLower())
             {
                 case "user":
-                    optimizedHistory.AddUserMessage(message.Content);
+                    optimizedHistory.AddUserMessage(string.IsNullOrEmpty(message.Summary) ? message.Content : message.Summary);
                     break;
                 case "system":
-                    optimizedHistory.AddSystemMessage(message.Content);
+                    optimizedHistory.AddSystemMessage(string.IsNullOrEmpty(message.Summary) ? message.Content : message.Summary);
                     break;
                 case "assistant":
-                    optimizedHistory.AddAssistantMessage(message.Content);
+                    optimizedHistory.AddAssistantMessage(string.IsNullOrEmpty(message.Summary) ? message.Content : message.Summary);
                     break;
             }
         }

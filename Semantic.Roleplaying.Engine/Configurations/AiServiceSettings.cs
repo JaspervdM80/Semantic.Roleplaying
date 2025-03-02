@@ -1,15 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Semantic.Roleplaying.Engine.Configurations;
+﻿namespace Semantic.Roleplaying.Engine.Configurations;
 
 public class AIServiceSettings
 {
-    public AuthenticationSettings Authentication { get; set; } = null!;
-    public EndpointSettings Endpoints { get; set; } = null!;
-    public ModelSettings Models { get; set; } = null!;
-    public VectorSettings VectorSettings { get; set; } = null!;
+    public AuthenticationSettings Authentication { get; init; } 
+    public EndpointSettings Endpoints { get; init; } 
+    public ModelSettings Models { get; init; } 
+    public VectorSettings VectorSettings { get; init; }
+    public PromptLogging PromptLogging { get; init; }
+
+    public AIServiceSettings()
+    {
+        Authentication = new();
+        Endpoints = new();
+        Models = new();
+        VectorSettings = new();
+        PromptLogging = new();
+    }
 }

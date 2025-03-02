@@ -5,11 +5,13 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Qdrant;
 using Microsoft.SemanticKernel.Embeddings;
 using Semantic.Roleplaying.Engine.Models;
+using Semantic.Roleplaying.Engine.Prompts;
 
 namespace Semantic.Roleplaying.Engine.Managers;
 
 public class SemanticChatManager : IChatManager
 {
+    private readonly Kernel _kernel;
     private readonly QdrantVectorStore _store;
     private readonly ITextEmbeddingGenerationService _embeddingService;
     private string _collectionName;
@@ -17,6 +19,7 @@ public class SemanticChatManager : IChatManager
 
     public SemanticChatManager(Kernel kernel)
     {
+        _kernel = kernel;
         _embeddingService = kernel.GetRequiredService<ITextEmbeddingGenerationService>();
         _store = (kernel.GetRequiredService<IVectorStore>() as QdrantVectorStore)!;
         _collectionName = string.Empty;
@@ -54,8 +57,21 @@ public class SemanticChatManager : IChatManager
         }
 
         var embedding = await _embeddingService.GenerateEmbeddingAsync(message.Content!);
+        var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
 
-        await _collection.UpsertAsync(new BotChatMessage(message.Content!, message.Role, embedding));
+        var contentMessage = message.Content!;
+
+        var summary = contentMessage.Length < 500
+                        ? contentMessage
+                        : (await chatCompletionService.GetChatMessageContentAsync(InitialPromptSelector.CreateSummary(contentMessage))).Content!;
+
+        var memory = new BotChatMessage(contentMessage, message.Role, embedding)
+        {
+            Summary = summary
+        };
+       
+
+        await _collection.UpsertAsync(memory);
     }
 
     public async Task<List<BotChatMessage>> LoadChatHistory(int maxMessages = 100)
