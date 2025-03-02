@@ -1,42 +1,38 @@
-﻿@inject IJSRuntime JS
+﻿@using Semantic.Roleplaying.Engine.Models.Scenario
+@using Semantic.Roleplaying.Engine.Services
+@inject IRoleplayService RoleplayService
+@inject IJSRuntime JS
 
 <div class="messages-container" @ref="messagesDiv">
 	<Virtualize Items="Messages" Context="message" TItem="ChatMessage">
-		<div class="message-box">
-			<div class="message-box-header">
-				@(message.IsUserMessage ? "Jasper" : "Birthday Sleepover")
-			</div>
-			<div class="message-container">
-				@if (message.IsUserMessage)
-				{
-					<div class="message-row">
-						<div class="message-sender">Jasper</div>
-						<div class="message-content">
-							@((MarkupString)FormatMessage(message.Content))
+		@if (!string.IsNullOrEmpty(message.Content))
+		{
+			<div class="message-box">
+				<div class="message-box-header">
+					@(message.IsUserMessage ? _userName : _aiName)
+				</div>
+				<div class="message-container">
+					@if (message.IsUserMessage)
+					{
+						<div class="message-row">
+							<div class="message-sender">@(_userName)</div>
+							<div class="message-content">
+								@((MarkupString)FormatMessage(message.Content))
+							</div>
 						</div>
-					</div>
-				}
-				else
-				{
-					<div class="message-row">
-						<div class="message-sender">Girls</div>
-						<div class="message-content">
-							@((MarkupString)FormatMessage(message.Content))
+					}
+					else
+					{
+						<div class="message-row">
+							<div class="message-sender">@(_aiName)</div>
+							<div class="message-content">
+								@((MarkupString)FormatMessage(message.Content))
+							</div>
 						</div>
-					</div>
-
-					@* @foreach (var response in ParseResponses(message.Content)) *@
-					@* { *@
-					@* 	<div class="message-row"> *@
-					@* 		<div class="message-sender">@response.Character</div> *@
-					@* 		<div class="message-content"> *@
-					@* 			@((MarkupString)FormatMessage(response.Content)) *@
-					@* 		</div> *@
-					@* 	</div> *@
-					@* } *@
-				}
+					}
+				</div>
 			</div>
-		</div>
+		}
 	</Virtualize>
 </div>
 
@@ -51,6 +47,15 @@
 
 	private record DialoguePart(string Character, string Content, string Emotion, bool IsNarrative);
 	private record Response(string Character, string Content);
+
+	private string? _userName;
+	private string? _aiName;
+
+	protected override void OnInitialized()
+	{
+		_userName = RoleplayService.ScenarioContext?.PlayerCharacter.Name ?? "User";
+		_aiName = RoleplayService.ScenarioContext?.ModuleInfo.Name ?? "AI";
+	}
 
 	public async Task ScrollToBottomAsync()
 	{

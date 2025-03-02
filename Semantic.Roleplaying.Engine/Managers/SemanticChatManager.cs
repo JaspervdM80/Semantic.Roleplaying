@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-using Microsoft.Extensions.VectorData;
+﻿using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Qdrant;
@@ -15,7 +14,7 @@ public class SemanticChatManager : IChatManager
     private readonly QdrantVectorStore _store;
     private readonly ITextEmbeddingGenerationService _embeddingService;
     private string _collectionName;
-    private IVectorStoreRecordCollection<ulong, BotChatMessage> _collection = null!;
+    private IVectorStoreRecordCollection<Guid, BotChatMessage> _collection = null!;
 
     public SemanticChatManager(Kernel kernel)
     {
@@ -40,7 +39,7 @@ public class SemanticChatManager : IChatManager
         };
 
         _collectionName = $"chat_history_{scenarioId}";
-        _collection = _store.GetCollection<ulong, BotChatMessage>(_collectionName, memoryDefinition);
+        _collection = _store.GetCollection<Guid, BotChatMessage>(_collectionName, memoryDefinition);
 
         await _collection.CreateCollectionIfNotExistsAsync();
     }
@@ -72,6 +71,11 @@ public class SemanticChatManager : IChatManager
        
 
         await _collection.UpsertAsync(memory);
+    }
+
+    public async Task DeleteMessage(Guid id, CancellationToken cancellationToken)
+    {
+        await _collection.DeleteAsync(id, cancellationToken: cancellationToken);
     }
 
     public async Task<List<BotChatMessage>> LoadChatHistory(int maxMessages = 100)

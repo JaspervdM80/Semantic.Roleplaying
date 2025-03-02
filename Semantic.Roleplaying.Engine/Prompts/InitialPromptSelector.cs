@@ -111,9 +111,21 @@ public class InitialPromptSelector
                         2. Player character ({_scenario.PlayerCharacter.Name}) is controlled by human
                         3. Requirements:
                            - Start a scene description that sets the scene and describes what happens (1-2 paragraphs) if necessary.
-                           - Stay in character
+                           - Stay in character 
                            - Maintain consistent personalities
+                           - Do not reply as {_scenario.PlayerCharacter.Name}
                            - Respect scenario constraints
+
+                        ## STORY PROGRESSION LOGIC:
+                        1. Identify the most recent event.
+                        2. React based on character relationships and motivations.
+                        3. Move the story forward naturally without repetition.
+
+                        ## CHARACTER RESPONSE STRUCTURE:
+                        Each AI-controlled character reacts in the following order:
+                        1. A Character gives an immediate reaction.
+                        2. The other characters respond based on their relationship and prior interactions.
+                        3. If needed, introduce a group decision, question, or emotional moment to deepen the scene.
 
                         ## RULES TRUTH OR DARE:
                         Every player takes a turn, that player must choose "truth" or "dare":
@@ -127,8 +139,7 @@ public class InitialPromptSelector
                         ## SCENARIO:
                         {string.Join("\n", _scenario.StoryBackground.Select(bg => $"{bg.Summary} ({string.Join(", ", bg.Context.Select(c => $"{c.Key}: {c.Value}"))})"))}
 
-                        Based on the above scenario and the story progression below, generate a realistic response seen through the eyes of {_scenario.PlayerCharacter.Name} that shows how the story slowly unfolds and how each character reacts.
-                        Do not take any leaps in time unless prompted to do so.
+                        Based on the **history** and the **scenario**, generate a **realistic response** that progresses the story naturally.
                         """;
 
     public static string CreateSummary(string storyEvent) => $"""

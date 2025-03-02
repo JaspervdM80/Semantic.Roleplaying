@@ -126,8 +126,7 @@ public class PromptLoggingHandler : DelegatingHandler
             promptLog.ResponseProperties.PromptTokens = replyJosn["prompt_eval_count"]!.GetValue<double>();
             promptLog.ResponseProperties.PromptParseDuration = replyJosn["prompt_eval_duration"]!.GetValue<double>();
             promptLog.ResponseProperties.ReplyTokens = replyJosn["eval_count"]!.GetValue<double>();
-            promptLog.ResponseProperties.ReplyDuration = replyJosn["eval_duration"]!.GetValue<double>();
-
+            promptLog.ResponseProperties.ReplyDuration = replyJosn["eval_duration"]?.GetValue<double>() ?? 0;
         }
         catch (Exception ex)
         {

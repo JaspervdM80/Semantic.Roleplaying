@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Data;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -15,7 +16,7 @@ namespace Semantic.Roleplaying.Engine.Services;
 public class RoleplayService : IRoleplayService
 {
     private readonly Kernel _kernel;
-    private ScenarioContext? _scenario;
+    public ScenarioContext? ScenarioContext { get; set; }
     private List<BotChatMessage> _chatHistory;
     private readonly ILogger<RoleplayService> _logger;
     private readonly IChatManager _chatManager;
@@ -35,7 +36,7 @@ public class RoleplayService : IRoleplayService
     {
         // Load scenario
         var scenarioJson = await File.ReadAllTextAsync("./data/sleepover_scenario.json");
-        _scenario = JsonSerializer.Deserialize<ScenarioContext>(
+        ScenarioContext = JsonSerializer.Deserialize<ScenarioContext>(
             scenarioJson,
             new JsonSerializerOptions
             {
@@ -44,14 +45,14 @@ public class RoleplayService : IRoleplayService
             }
         ) ?? throw new Exception("Failed to load scenario");
 
-        await _chatManager.Load(_scenario.ModuleInfo.Id);
+        await _chatManager.Load(ScenarioContext.ModuleInfo.Id);
 
         await LoadChatHistoryAsync();
     }
 
     public ScenarioContext GetScenarioContext()
     {
-        return _scenario ?? throw new InvalidOperationException("Scenario not loaded");
+        return ScenarioContext ?? throw new InvalidOperationException("Scenario not loaded");
     }
 
     public List<BotChatMessage> GetChatHistory()
@@ -87,19 +88,23 @@ public class RoleplayService : IRoleplayService
 
                 _ = _chatManager.SaveMessage(new ChatMessageContent(role, userInput), _messageCounter++);
             }
+            else
+            {
+                _chatHistory.Add(new BotChatMessage() { Content = "Continue the story progression", Role = AuthorRole.System.Label });
+            }
 
             // Optimize chat history before sending to LLM
             var optimizedHistory = OptimizeChatHistory(relevantContext);
 
             var chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
-            var promptSelector = new InitialPromptSelector(_scenario!);
+            var promptSelector = new InitialPromptSelector(ScenarioContext!);
 
             // Apply prompt to optimized history
             promptSelector.SelectPromptBasedOnUserInput(optimizedHistory, userInput);
 
             var settings = new OllamaPromptExecutionSettings
             {
-                Temperature = isDescriptionCommand ? 0.7f : 0.4f,
+                Temperature = isDescriptionCommand ? 0.7f : 0.5f,
                 NumPredict = isDescriptionCommand ? 1000 : 700,
                 TopP = isDescriptionCommand ? 0.8f : 0.4f,
                 ExtensionData = new Dictionary<string, object>

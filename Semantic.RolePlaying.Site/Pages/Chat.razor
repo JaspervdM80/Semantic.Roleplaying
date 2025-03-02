@@ -92,8 +92,6 @@
 
 	private async Task SendMessage()
 	{
-		if (string.IsNullOrWhiteSpace(currentMessage)) return;
-
 		var userMessage = currentMessage;
 		currentMessage = string.Empty;
 		StateHasChanged();
