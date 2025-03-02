@@ -62,11 +62,17 @@
 			scenario = RoleplayService.GetScenarioContext();
 
 			var history = RoleplayService.GetChatHistory();
-			foreach (var msg in history.Where(m => !m.Role.Equals("system", StringComparison.OrdinalIgnoreCase)))
+
+			foreach (var msg in history)
 			{
-				ProcessMessage(msg.Content ?? string.Empty,
-					msg.Role.Equals("user", StringComparison.OrdinalIgnoreCase));
+				ProcessMessage(msg.Content ?? string.Empty, msg.Role.Equals("system", StringComparison.OrdinalIgnoreCase));
 			}
+
+			// foreach (var msg in history.Where(m => !m.Role.Equals("system", StringComparison.OrdinalIgnoreCase)))
+			// {
+			// 	ProcessMessage(msg.Content ?? string.Empty,
+			// 		msg.Role.Equals("user", StringComparison.OrdinalIgnoreCase));
+			// }
 
 			if (!history.Any(m => !m.Role.Equals("system", StringComparison.OrdinalIgnoreCase)))
 			{
