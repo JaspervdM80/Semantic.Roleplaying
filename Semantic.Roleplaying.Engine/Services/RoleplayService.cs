@@ -77,12 +77,12 @@ public class RoleplayService : IRoleplayService
                 var input = $"[Jasper] {userInput}";
 
                 // Add user message to history
-                _chatHistory.Add(new BotChatMessage() { Content = input, Metadata = new BotChatMessageMetadata() { Role = AuthorRole.System.ToString() } });
-                
+                _chatHistory.Add(new BotChatMessage() { Content = input, Role = AuthorRole.System.Label });
+
                 // Get relevant context from semantic memory
                 if (!isDescriptionCommand)
                 {
-                    relevantContext = (await _chatManager.SearchSimilarMessages(userInput, 3)).ToList();               
+                    relevantContext = (await _chatManager.SearchSimilarMessages(userInput, 3)).ToList();
                 }
 
                 await _chatManager.SaveMessage(new ChatMessageContent(AuthorRole.System, input), _messageCounter++);
@@ -144,31 +144,31 @@ public class RoleplayService : IRoleplayService
         var optimizedHistory = new ChatHistory();
 
         var recentMessages = _chatHistory
-            .Where(m => m.Metadata.Role != AuthorRole.System.ToString())
-            .OrderBy(m => m.Metadata.SequenceNumber)
+            .Where(m => m.Role != AuthorRole.System.ToString())
+            .OrderBy(m => m.Moment)
             .TakeLast(MAX_WINDOW_SIZE)
             .ToList();
 
         recentMessages.AddRange(_chatHistory
-            .Where(m => m.Metadata.Role == AuthorRole.System.ToString())
-            .OrderBy(m => m.Metadata.SequenceNumber)
+            .Where(m => m.Role == AuthorRole.System.ToString())
+            .OrderBy(m => m.Moment)
             .TakeLast((int)Math.Floor((decimal)MAX_WINDOW_SIZE / 2)));
 
-        var sequenceNumbers = recentMessages.Select(m => m.Metadata.SequenceNumber);
+        var sequenceNumbers = recentMessages.Select(m => m.Key);
 
         if (relevantMessages.Count() > 0)
         {
-            recentMessages.AddRange(relevantMessages.Where(m => !sequenceNumbers.Contains(m.Metadata.SequenceNumber)));
+            recentMessages.AddRange(relevantMessages.Where(m => !sequenceNumbers.Contains(m.Key)));
         }
 
-        foreach (var message in recentMessages.OrderBy(m => m.Metadata.SequenceNumber))
+        foreach (var message in recentMessages.OrderBy(m => m.Moment))
         {
-            switch (message.Metadata.Role.ToLower())
+            switch (message.Role.ToLower())
             {
                 case "user":
                     optimizedHistory.AddUserMessage(message.Content);
                     break;
-                case "sysem":
+                case "system":
                     optimizedHistory.AddSystemMessage(message.Content);
                     break;
                 case "assistant":
@@ -186,7 +186,7 @@ public class RoleplayService : IRoleplayService
         {
             // Get messages outside the recent window
             var oldMessages = _chatHistory
-                .Where(m => !m.Metadata.Role.Equals("system", StringComparison.OrdinalIgnoreCase))
+                .Where(m => !m.Role.Equals("system", StringComparison.OrdinalIgnoreCase))
                 .Take(_chatHistory.Count - MAX_WINDOW_SIZE);
 
             if (!oldMessages.Any())

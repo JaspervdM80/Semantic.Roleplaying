@@ -58,7 +58,7 @@ public class InitialPromptSelector
     private string CreateSystemPrompt(InstructionType type)
     {
         var basePrompt = $"""
-        You are an AI managing multiple characters in a roleplay scenario.
+        You are managing an realistic interactuive story with multiple characters. Generate responses based on the following information.
         Scenario: {_scenario!.ModuleInfo.Description}
         """;
 
@@ -110,17 +110,18 @@ public class InitialPromptSelector
                         1. Controlled characters: {string.Join(", ", _scenario.NPCs.Select(x => x.Name))}
                         2. Player character ({_scenario.PlayerCharacter.Name}) is controlled by human
                         3. Requirements:
+                           - Start a scene description that sets the scene and describes what happens (1-2 paragraphs) if necessary.
                            - Stay in character
-                           - Use [Character] prefixes for dialogue
                            - Maintain consistent personalities
                            - Respect scenario constraints
-                        Character Information:
-                        {string.Join("\n\n", _scenario.NPCs.Select(npc =>
-                            $"{npc.Name}:\n{npc.BackStory}\nPersonality: {string.Join(", ", npc.PersonalityTraits.Select(t => $"{t.Key}: {t.Value}"))}"))}
 
-                        Background Context:
-                        {string.Join("\n", _scenario.StoryBackground.Select(bg => bg.Summary))}
+                        ## CHARACTERS:
+                        {string.Join("\n", _scenario.NPCs.Select(npc =>
+                            $"{npc.Name}: {npc.BackStory}\nPersonality:\n {string.Join("\n- ", npc.PersonalityTraits.Select(t => $"{t.Key}: {t.Value}"))}"))}
 
-                        Current situation: {_scenario.StoryBackground.Last().Summary}
+                        ## BACKGROUND CONTEXT:
+                        {string.Join("\n", _scenario.StoryBackground.Select(bg => $"{bg.Summary} ({string.Join(", ", bg.Context.Select(c => $"{c.Key}: {c.Value}"))})"))}
+
+                        Based on the above information, generate a realistic, immersive response that shows how the scene based on the provided history unfolds and how each character reacts.
                         """;
 }

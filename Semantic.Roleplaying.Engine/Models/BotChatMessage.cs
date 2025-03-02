@@ -4,25 +4,38 @@ namespace Semantic.Roleplaying.Engine.Models;
 
 public record BotChatMessage
 {
-    public Guid Id { get; init; } = Guid.NewGuid();
-    public double Relevance { get; init; }
+    public Guid Key { get; init; }
+    public long Moment { get; init; }
+    public string Role { get; init; }
     public string Content { get; init; }
-    public BotChatMessageMetadata Metadata { get; init; }
+    public string Summary { get; init; }
+    public ReadOnlyMemory<float> ContentEmbedding { get; init; }
 
     public BotChatMessage()
     {
-        Relevance = 0;
+        Key = Guid.NewGuid();
+        Moment = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Content = string.Empty;
-        Metadata = new BotChatMessageMetadata();
+        Role = string.Empty;
+        Summary = string.Empty;
     }
 
     public BotChatMessage(string content, AuthorRole author)
     {
-        Relevance = 0;
+        Key = Guid.NewGuid();
+        Moment = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Content = content;
-        Metadata = new BotChatMessageMetadata()
-        {
-            Role = author.ToString()
-        };
+        Summary = string.Empty;
+        Role = author.Label;
+    }
+
+    public BotChatMessage(string content, AuthorRole author, ReadOnlyMemory<float> contentEmbedding)
+    {
+        Key = Guid.NewGuid();
+        Moment = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Summary = string.Empty;
+        Content = content;
+        ContentEmbedding = contentEmbedding;
+        Role = author.Label;
     }
 }

@@ -1,29 +1,45 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Memory;
+using Microsoft.SemanticKernel.Connectors.Qdrant;
+using Microsoft.SemanticKernel.Embeddings;
 using Semantic.Roleplaying.Engine.Models;
 
 namespace Semantic.Roleplaying.Engine.Managers;
 
 public class SemanticChatManager : IChatManager
 {
-    private readonly ISemanticTextMemory _memory;
+    private readonly QdrantVectorStore _store;
+    private readonly ITextEmbeddingGenerationService _embeddingService;
     private string _collectionName;
-    private readonly IMemoryStore _memoryStore;
+    private IVectorStoreRecordCollection<ulong, BotChatMessage> _collection = null!;
 
-
-    public SemanticChatManager(ISemanticTextMemory memory, IMemoryStore memoryStore)
+    public SemanticChatManager(Kernel kernel)
     {
-        _memory = memory ?? throw new ArgumentNullException(nameof(memory));
-        _memoryStore = memoryStore;
+        _embeddingService = kernel.GetRequiredService<ITextEmbeddingGenerationService>();
+        _store = (kernel.GetRequiredService<IVectorStore>() as QdrantVectorStore)!;
         _collectionName = string.Empty;
     }
 
     public async Task Load(string scenarioId)
     {
+        var memoryDefinition = new VectorStoreRecordDefinition
+        {
+            Properties = [
+                new VectorStoreRecordKeyProperty("Key", typeof(Guid)),
+                new VectorStoreRecordDataProperty("Moment", typeof(long)) { IsFilterable = true },
+                new VectorStoreRecordDataProperty("Content", typeof(string)) { IsFullTextSearchable = true },
+                new VectorStoreRecordVectorProperty("ContentEmbedding", typeof(ReadOnlyMemory<float>)) { Dimensions = 768 },
+                new VectorStoreRecordDataProperty("Role", typeof(string)) { IsFilterable = true },
+                new VectorStoreRecordDataProperty("Summary", typeof(string)) { IsFullTextSearchable = true },
+            ]
+        };
+
         _collectionName = $"chat_history_{scenarioId}";
-        await CreateCollectionIfItDoesNotExists();
+        _collection = _store.GetCollection<ulong, BotChatMessage>(_collectionName, memoryDefinition);
+
+        await _collection.CreateCollectionIfNotExistsAsync();
     }
 
     public async Task SaveMessage(ChatMessageContent message, int sequenceNumber)
@@ -37,22 +53,16 @@ public class SemanticChatManager : IChatManager
             return;
         }
 
-        var metadata = BotChatMessageMetadata.FromChatMessage(message, sequenceNumber);
-        var id = GetMessageId(sequenceNumber);
+        var embedding = await _embeddingService.GenerateEmbeddingAsync(message.Content!);
 
-        await _memory.SaveInformationAsync(
-            collection: _collectionName,
-            text: message.Content ?? string.Empty,
-            id: id,
-            description: $"Chat message from {metadata.Role}",
-            additionalMetadata: JsonSerializer.Serialize(metadata));
+        await _collection.UpsertAsync(new BotChatMessage(message.Content!, message.Role, embedding));
     }
 
     public async Task<List<BotChatMessage>> LoadChatHistory(int maxMessages = 100)
     {
         try
         {
-            await CreateCollectionIfItDoesNotExists();
+            await _collection.CreateCollectionIfNotExistsAsync();
 
             var chatHistory = await GetOrderedMemories(maxMessages);
 
@@ -64,73 +74,45 @@ public class SemanticChatManager : IChatManager
         }
     }
 
-    public async Task<IReadOnlyList<BotChatMessage>> SearchSimilarMessages(string query, int limit = 5)
+    public async Task<List<BotChatMessage>> SearchSimilarMessages(string query, int limit = 5)
     {
-        var memories = new List<BotChatMessage>();
-
-        await foreach (var memory in _memory.SearchAsync(
-            collection: _collectionName,
-            query: query,
-            limit: limit * 2, // Request more to allow for filtering
-            minRelevanceScore: 0.7))
+        var options = new VectorSearchOptions()
         {
-            var metadata = DeserializeMetadata(memory.Metadata.AdditionalMetadata);
+            Top = limit * 2,
+            IncludeVectors = false,
+            IncludeTotalCount = false
+        };
 
-            // Skip system messages containing context or summaries
-            if (metadata.Role == "system" &&
-                (memory.Metadata.Text.Contains("Previous relevant context") ||
-                 memory.Metadata.Text.Contains("Relevant context") ||
-                 memory.Metadata.Text.Contains("Conversation Summary")))
-            {
-                continue;
-            }
-
-            memories.Add(new BotChatMessage
-            {
-                Content = memory.Metadata.Text,
-                Relevance = memory.Relevance,
-                Metadata = metadata
-            });
-        }
+        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+        var records = await _collection.VectorizedSearchAsync(queryEmbedding, options);
+        var memories = await records.Results.ToListAsync();
 
         // Order by relevance and sequence number
         return memories
-            .OrderByDescending(m => m.Relevance)
+            .OrderByDescending(m => m.Score)
             .Take(limit)
+            .Select(m => m.Record)
+            .OrderBy(m => m.Moment)
             .ToList();
     }
-
-    private static string GetMessageId(int sequenceNumber) => $"msg_{sequenceNumber}";
 
     private async Task<IReadOnlyList<BotChatMessage>> GetOrderedMemories(int maxMessages)
     {
-        var memories = new List<BotChatMessage>();
-
-        await foreach (var memory in _memory.SearchAsync(
-            collection: _collectionName,
-            query: "System: Load recent messages",
-            limit: maxMessages,
-            minRelevanceScore: 0.0))
+        var options = new VectorSearchOptions()
         {
-            var metadata = DeserializeMetadata(memory.Metadata.AdditionalMetadata);
+            Top = maxMessages,
+            IncludeVectors = false,
+            IncludeTotalCount = false
+        };
 
-            memories.Add(new BotChatMessage
-            {
-                Content = memory.Metadata.Text,
-                Relevance = memory.Relevance,
-                Metadata = metadata
-            });
-        }
+        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync("System: Load recent messages");
+        var records = await _collection.VectorizedSearchAsync(queryEmbedding, options);
+        var memories = await records.Results.ToListAsync();
 
         return memories
-            .OrderBy(m => m.Metadata.SequenceNumber)
+            .Select(m => m.Record)
+            .OrderBy(m => m.Moment)
             .ToList();
-    }
-
-    private static BotChatMessageMetadata DeserializeMetadata(string metadata)
-    {
-        return JsonSerializer.Deserialize<BotChatMessageMetadata>(metadata)
-            ?? throw new InvalidOperationException("Failed to deserialize message metadata");
     }
 
     //private static void AddMessageToHistory(ChatHistory history, BotChatMessage message)
@@ -159,19 +141,4 @@ public class SemanticChatManager : IChatManager
 
     //    return $"[{character}] {message}";
     //}
-
-    private async Task CreateCollectionIfItDoesNotExists()
-    {
-        try
-        {
-            if (!(await _memoryStore.DoesCollectionExistAsync(_collectionName)))
-            {
-                await _memoryStore.CreateCollectionAsync(_collectionName);
-            }
-        }
-        catch (Exception)
-        {
-            // Log or handle collection creation error
-        }
-    }
 }

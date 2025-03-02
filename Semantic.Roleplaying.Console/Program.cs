@@ -4,10 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel.Connectors.Qdrant;
-using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.SemanticKernel.Memory;
 using OpenAI;
-using Semantic.Roleplaying.Engine.Diagnostics;
 using Semantic.Roleplaying.Engine.Managers;
 using Semantic.Roleplaying.Engine.Services;
 
@@ -17,7 +15,7 @@ try
     var embeddingModel = "text-embedding-ada-002";
     var lmEndpoint = new Uri("http://localhost:1234/v1");
     var embedEndpoint = new Uri("http://localhost:5000/v1");
-    var dimensions = 1024;
+    var dimensions = 768;
 
     var httpClient = new HttpClient
     {
@@ -28,7 +26,7 @@ try
     var embedOpenAIOptions = new OpenAIClientOptions { Endpoint = embedEndpoint };
     var apiKeyCredential = new ApiKeyCredential(apiKey);
 
-    // Configure memory store with proper vector size for BGE model (1024 dimensions)
+    // Configure memory store with proper vector size for BGE model (768 dimensions)
     var memoryStore = new QdrantMemoryStore("http://localhost:6333", dimensions);
 
     // Configure memory with explicit OpenAI settings
@@ -65,7 +63,6 @@ try
     services.AddSingleton<IMemoryStore>(memoryStore);
     services.AddScoped<IChatManager, SemanticChatManager>();
     services.AddScoped<IRoleplayService, RoleplayService>();
-    services.AddScoped<IQdrantDiagnostics, QdrantDiagnostics>();
 
     var serviceProvider = services.BuildServiceProvider();
 

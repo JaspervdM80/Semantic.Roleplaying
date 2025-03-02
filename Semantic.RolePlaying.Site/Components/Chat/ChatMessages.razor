@@ -18,16 +18,22 @@
 				}
 				else
 				{
-					
-					@foreach (var response in ParseResponses(message.Content))
-					{
-						<div class="message-row">
-							<div class="message-sender">@response.Character</div>
-							<div class="message-content">
-								@((MarkupString)FormatMessage(response.Content))
-							</div>
+					<div class="message-row">
+						<div class="message-sender">Girls</div>
+						<div class="message-content">
+							@((MarkupString)FormatMessage(message.Content))
 						</div>
-					}
+					</div>
+
+					@* @foreach (var response in ParseResponses(message.Content)) *@
+					@* { *@
+					@* 	<div class="message-row"> *@
+					@* 		<div class="message-sender">@response.Character</div> *@
+					@* 		<div class="message-content"> *@
+					@* 			@((MarkupString)FormatMessage(response.Content)) *@
+					@* 		</div> *@
+					@* 	</div> *@
+					@* } *@
 				}
 			</div>
 		</div>
